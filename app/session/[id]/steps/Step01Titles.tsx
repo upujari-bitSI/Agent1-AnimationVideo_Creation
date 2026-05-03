@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 import { TOOLS_BY_STEP } from "@/lib/agent/tools";
 import { buildTitlesPrompt, parseTitlesOutput, TitleOption, TitlesOutput } from "@/lib/agent/steps/01-titles";
@@ -9,28 +9,25 @@ import ToolSelector from "@/components/ToolSelector";
 import TopicSelector, { THEMES } from "@/components/TopicSelector";
 import HumanReviewPanel from "@/components/HumanReviewPanel";
 import StreamingOutput from "@/components/StreamingOutput";
+import ManualPastePanel from "@/components/ManualPastePanel";
 
 export default function Step01Titles() {
   const { steps, sessionId, setStepTool, setStepOutput, setStepStatus, approveStep, setCurrentStep, incrementRegenerate } = usePipelineStore();
   const step = steps.find((s) => s.id === "01-titles")!;
 
-  // Restore from Zustand store so state survives navigation
   const stored = step.output as TitlesOutput | null;
-
   const [selectedThemes, setSelectedThemes] = useState<string[]>(stored?.themes ?? []);
   const [titles, setTitles] = useState<TitleOption[]>(stored?.titles ?? []);
   const [selectedTitle, setSelectedTitle] = useState<TitleOption | null>(stored?.selected ?? null);
   const [prompt, setPrompt] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
-  // Track whether streaming is in flight so we don't render a new StreamingOutput on re-render
   const [streamKey, setStreamKey] = useState(0);
   const [generating, setGenerating] = useState(false);
 
   const tools = TOOLS_BY_STEP["01-titles"];
   const titlesReady = titles.length > 0;
-
-  // If already approved, keep it readonly
   const isApproved = step.status === "approved";
+  const isManual = step.selectedTool?.requiresManual ?? false;
 
   function toggleTheme(id: string) {
     setSelectedThemes((prev) =>
@@ -46,41 +43,48 @@ export default function Step01Titles() {
     setTitles([]);
     setSelectedTitle(null);
     setParseError(null);
-    setGenerating(true);
-    setStreamKey((k) => k + 1); // new key forces StreamingOutput to remount fresh
+    if (!isManual) {
+      setGenerating(true);
+      setStreamKey((k) => k + 1);
+    }
   }
 
-  function handleStreamComplete(raw: string) {
-    setGenerating(false);
+  function handleParsed(raw: string) {
     try {
       const parsed = parseTitlesOutput(raw);
-      if (parsed.length === 0) throw new Error("AI returned 0 titles — try again");
+      if (parsed.length === 0) throw new Error("Got 0 titles — check the pasted text");
       setTitles(parsed);
-      // Save themes + titles to store immediately (selected stays null until user picks)
+      setParseError(null);
       setStepOutput("01-titles", { themes: selectedThemes, titles: parsed, selected: null });
     } catch (e) {
-      setParseError(`Could not parse AI output: ${e instanceof Error ? e.message : String(e)}`);
+      setParseError(`Could not parse: ${e instanceof Error ? e.message : String(e)}`);
       setStepStatus("01-titles", "idle");
     }
   }
 
+  function handleStreamComplete(raw: string) {
+    setGenerating(false);
+    handleParsed(raw);
+  }
+
   function handleSelectTitle(t: TitleOption) {
     setSelectedTitle(t);
-    // Persist selection to store immediately — not just on Approve —
-    // so Step02 can read it even if the user navigates away and back
     setStepOutput("01-titles", { themes: selectedThemes, titles, selected: t });
   }
 
   function handleApprove() {
     if (!selectedTitle) return;
-    // Store is already up to date from handleSelectTitle, just approve
     approveStep("01-titles");
   }
 
   function handleRegenerate() {
     incrementRegenerate("01-titles");
     setStepStatus("01-titles", "idle");
-    startGeneration();
+    setTitles([]);
+    setSelectedTitle(null);
+    setPrompt("");
+    setParseError(null);
+    setGenerating(false);
   }
 
   return (
@@ -88,7 +92,7 @@ export default function Step01Titles() {
       <ToolSelector
         tools={tools}
         selected={step.selectedTool}
-        onSelect={(t) => setStepTool("01-titles", t)}
+        onSelect={(t) => { setStepTool("01-titles", t); setPrompt(""); setTitles([]); setSelectedTitle(null); }}
       />
 
       {step.selectedTool && (
@@ -101,18 +105,30 @@ export default function Step01Titles() {
         />
       )}
 
-      {/* Generate button — show when no titles yet and not currently generating */}
-      {step.selectedTool && selectedThemes.length > 0 && !titlesReady && !generating && (
+      {/* Generate / show prompt button */}
+      {step.selectedTool && selectedThemes.length > 0 && !titlesReady && !generating && !prompt && (
         <button
           onClick={startGeneration}
           className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all"
         >
-          Generate Title Ideas →
+          {isManual ? "Show ChatGPT Prompt →" : "Generate Title Ideas →"}
         </button>
       )}
 
-      {/* StreamingOutput — only shown while actively generating, hidden once titles arrive */}
-      {generating && prompt && step.selectedTool?.apiSupported && (
+      {/* MANUAL TOOL — show prompt + paste area */}
+      {isManual && prompt && !titlesReady && (
+        <ManualPastePanel
+          toolName={step.selectedTool!.name}
+          prompt={prompt}
+          pasteLabel='Paste the JSON array ChatGPT returned (starts with "["):'
+          placeholder={'[\n  {\n    "title": "...",\n    "emoji": "🎵",\n    "ageRange": "2-5 years",\n    "hook": "...",\n    "engagementScore": 8\n  },\n  ...\n]'}
+          onSubmit={handleParsed}
+          onRegen={() => { setPrompt(""); setParseError(null); }}
+        />
+      )}
+
+      {/* API TOOL — stream directly */}
+      {!isManual && generating && prompt && step.selectedTool?.apiSupported && (
         <StreamingOutput
           key={streamKey}
           sessionId={sessionId || ""}
@@ -125,25 +141,18 @@ export default function Step01Titles() {
 
       {parseError && (
         <div className="p-3 bg-red-900/30 border border-red-700 rounded-xl text-sm text-red-300">
-          <p className="font-bold mb-1">⚠ Generation error</p>
-          <p>{parseError}</p>
-          <button
-            onClick={handleRegenerate}
-            className="mt-2 px-4 py-1.5 bg-red-800 hover:bg-red-700 text-red-200 text-xs font-bold rounded-lg transition-all"
-          >
-            ↺ Try Again
+          <p className="font-bold mb-1">⚠ Parse error</p>
+          <p className="mb-2">{parseError}</p>
+          <p className="text-xs text-slate-400 mb-2">
+            Make sure you pasted the full JSON array including the outer <code className="bg-slate-800 px-1 rounded">[ ]</code> brackets.
+          </p>
+          <button onClick={handleRegenerate} className="px-4 py-1.5 bg-red-800 hover:bg-red-700 text-red-200 text-xs font-bold rounded-lg">
+            ↺ Start Over
           </button>
         </div>
       )}
 
-      {step.selectedTool?.requiresManual && prompt && (
-        <div className="p-4 bg-slate-800/60 border border-slate-600 rounded-xl text-sm text-slate-300 space-y-2">
-          <p className="font-bold text-amber-300">Manual Step: Copy this prompt to {step.selectedTool.name}</p>
-          <pre className="whitespace-pre-wrap text-xs bg-slate-900 p-3 rounded-lg overflow-auto">{prompt}</pre>
-        </div>
-      )}
-
-      {/* Review panel — only shown when a title is selected */}
+      {/* Review panel */}
       {titlesReady && selectedTitle && !isApproved && (
         <HumanReviewPanel
           stepId="01-titles"
@@ -170,7 +179,7 @@ export default function Step01Titles() {
         </HumanReviewPanel>
       )}
 
-      {titlesReady && !selectedTitle && !generating && (
+      {titlesReady && !selectedTitle && (
         <p className="text-sm text-amber-300 text-center py-2">
           👆 Click a title card above to select it, then approve to continue
         </p>

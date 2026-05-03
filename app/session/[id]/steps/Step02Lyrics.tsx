@@ -9,6 +9,7 @@ import StepCard from "@/components/StepCard";
 import ToolSelector from "@/components/ToolSelector";
 import HumanReviewPanel from "@/components/HumanReviewPanel";
 import StreamingOutput from "@/components/StreamingOutput";
+import ManualPastePanel from "@/components/ManualPastePanel";
 
 const LENGTHS: { id: LyricsLength; label: string }[] = [
   { id: "short",  label: "Short (1.5 min)"  },
@@ -20,13 +21,11 @@ export default function Step02Lyrics() {
   const { steps, sessionId, setStepTool, setStepOutput, approveStep, setCurrentStep, incrementRegenerate } = usePipelineStore();
   const step = steps.find((s) => s.id === "02-lyrics")!;
 
-  // Read title from store — persisted by Step01 on title selection
   const titlesStep = steps.find((s) => s.id === "01-titles");
   const titlesOutput = titlesStep?.output as TitlesOutput | null;
   const selectedTitle = titlesOutput?.selected;
   const themes = titlesOutput?.themes || [];
 
-  // Restore lyrics from store if navigating back
   const storedLyrics = step.output as LyricsOutput | null;
 
   const [length, setLength] = useState<LyricsLength>("medium");
@@ -38,6 +37,7 @@ export default function Step02Lyrics() {
 
   const tools = TOOLS_BY_STEP["02-lyrics"];
   const isApproved = step.status === "approved";
+  const isManual = step.selectedTool?.requiresManual ?? false;
 
   function startGeneration() {
     if (!selectedTitle || generating) return;
@@ -45,28 +45,38 @@ export default function Step02Lyrics() {
     setPrompt(p);
     setLyrics(null);
     setParseError(null);
-    setGenerating(true);
-    setStreamKey((k) => k + 1);
+    if (!isManual) {
+      setGenerating(true);
+      setStreamKey((k) => k + 1);
+    }
   }
 
-  function handleStreamComplete(raw: string) {
-    setGenerating(false);
+  function handleParsed(raw: string) {
     if (!selectedTitle) return;
     try {
       const parsed = parseLyricsOutput(raw, selectedTitle.title, length);
       setLyrics(parsed);
+      setParseError(null);
       setStepOutput("02-lyrics", parsed);
     } catch (e) {
       setParseError(`Could not parse lyrics: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  function handleRegenerate() {
-    incrementRegenerate("02-lyrics");
-    startGeneration();
+  function handleStreamComplete(raw: string) {
+    setGenerating(false);
+    handleParsed(raw);
   }
 
-  // Title not yet selected/approved in Step 1
+  function handleRegenerate() {
+    incrementRegenerate("02-lyrics");
+    setPrompt("");
+    setLyrics(null);
+    setParseError(null);
+    setGenerating(false);
+  }
+
+  // Title not yet selected in Step 1
   if (!selectedTitle) {
     return (
       <StepCard step={step} isActive>
@@ -86,14 +96,14 @@ export default function Step02Lyrics() {
 
   return (
     <StepCard step={step} isActive>
-      {/* Selected title banner */}
+      {/* Title banner */}
       <div className="flex items-center gap-2 p-3 bg-slate-800/60 rounded-xl border border-slate-700">
         <span className="text-2xl">{selectedTitle.emoji}</span>
         <span className="font-bold text-white" style={{ fontFamily: "var(--font-fredoka)" }}>{selectedTitle.title}</span>
-        <span className="ml-auto text-xs text-green-400 font-semibold">✓ Title locked</span>
+        <span className="ml-auto text-xs text-green-400 font-semibold">&#x2713; Title locked</span>
       </div>
 
-      <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => setStepTool("02-lyrics", t)} />
+      <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => { setStepTool("02-lyrics", t); setPrompt(""); setLyrics(null); }} />
 
       {/* Length picker */}
       {!isApproved && (
@@ -114,15 +124,27 @@ export default function Step02Lyrics() {
         </div>
       )}
 
-      {/* Generate button */}
-      {step.selectedTool && !lyrics && !generating && !isApproved && (
+      {/* Generate / show prompt button */}
+      {step.selectedTool && !lyrics && !generating && !prompt && !isApproved && (
         <button onClick={startGeneration} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
-          Generate Lyrics →
+          {isManual ? "Show ChatGPT Prompt →" : "Generate Lyrics →"}
         </button>
       )}
 
-      {/* Streaming — hidden once lyrics are ready */}
-      {generating && prompt && step.selectedTool?.apiSupported && (
+      {/* MANUAL — paste-back panel */}
+      {isManual && prompt && !lyrics && (
+        <ManualPastePanel
+          toolName={step.selectedTool!.name}
+          prompt={prompt}
+          pasteLabel="Paste the full lyrics ChatGPT returned:"
+          placeholder={"[INTRO]\nWake up, wake up...\n\n[VERSE 1]\n..."}
+          onSubmit={handleParsed}
+          onRegen={() => { setPrompt(""); setParseError(null); }}
+        />
+      )}
+
+      {/* API — streaming */}
+      {!isManual && generating && prompt && step.selectedTool?.apiSupported && (
         <StreamingOutput
           key={streamKey}
           sessionId={sessionId || ""}
@@ -135,10 +157,10 @@ export default function Step02Lyrics() {
 
       {parseError && (
         <div className="p-3 bg-red-900/30 border border-red-700 rounded-xl text-sm text-red-300">
-          <p className="font-bold mb-1">⚠ Generation error</p>
-          <p>{parseError}</p>
-          <button onClick={handleRegenerate} className="mt-2 px-4 py-1.5 bg-red-800 hover:bg-red-700 text-red-200 text-xs font-bold rounded-lg">
-            ↺ Try Again
+          <p className="font-bold mb-1">&#x26A0; Parse error</p>
+          <p className="mb-1">{parseError}</p>
+          <button onClick={handleRegenerate} className="mt-1 px-4 py-1.5 bg-red-800 hover:bg-red-700 text-red-200 text-xs font-bold rounded-lg">
+            &#x21BA; Try Again
           </button>
         </div>
       )}
