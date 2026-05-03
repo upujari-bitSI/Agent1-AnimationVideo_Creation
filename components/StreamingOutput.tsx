@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePipelineStore } from "@/store/pipeline";
 
 interface Props {
@@ -9,28 +9,41 @@ interface Props {
   prompt: string;
   systemPrompt?: string;
   onComplete?: (fullText: string) => void;
+  /** Start streaming immediately on mount. Only fires ONCE per mount. */
   autoStart?: boolean;
 }
 
 export default function StreamingOutput({ sessionId, stepId, prompt, systemPrompt, onComplete, autoStart }: Props) {
-  const { streamingText, isStreaming, setStreamingText, appendStreamingText, setIsStreaming, setStepStatus } = usePipelineStore();
+  // Local state — not shared with other steps so streams don't interfere with each other
+  const [streaming, setStreaming] = useState(false);
+  const [streamText, setStreamText] = useState("");
+  const [done, setDone] = useState(false);
+
+  const { setStepStatus } = usePipelineStore();
   const fullTextRef = useRef("");
   const containerRef = useRef<HTMLDivElement>(null);
+  // Guard: prevents React Strict Mode double-invocation and repeat auto-starts
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (autoStart) startStream();
+    if (autoStart && !startedRef.current) {
+      startedRef.current = true;
+      startStream();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart]);
+  }, []);  // empty deps — intentionally runs once on mount only
 
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [streamingText]);
+  }, [streamText]);
 
   async function startStream() {
-    setStreamingText("");
-    setIsStreaming(true);
+    if (streaming) return; // block if already running
+    setStreamText("");
+    setDone(false);
+    setStreaming(true);
     fullTextRef.current = "";
     setStepStatus(stepId, "running");
 
@@ -48,8 +61,8 @@ export default function StreamingOutput({ sessionId, stepId, prompt, systemPromp
       let buffer = "";
 
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        const { done: readerDone, value } = await reader.read();
+        if (readerDone) break;
         buffer += decoder.decode(value, { stream: true });
 
         const lines = buffer.split("\n");
@@ -59,7 +72,8 @@ export default function StreamingOutput({ sessionId, stepId, prompt, systemPromp
           if (!line.startsWith("data: ")) continue;
           const raw = line.slice(6).trim();
           if (raw === "[DONE]") {
-            setIsStreaming(false);
+            setStreaming(false);
+            setDone(true);
             setStepStatus(stepId, "review");
             onComplete?.(fullTextRef.current);
             return;
@@ -69,22 +83,23 @@ export default function StreamingOutput({ sessionId, stepId, prompt, systemPromp
             if (error) throw new Error(error);
             if (text) {
               fullTextRef.current += text;
-              appendStreamingText(text);
+              setStreamText((prev) => prev + text);
             }
-          } catch {}
+          } catch { /* ignore malformed chunks */ }
         }
       }
     } catch (err) {
-      setIsStreaming(false);
+      setStreaming(false);
       setStepStatus(stepId, "error");
       const msg = err instanceof Error ? err.message : "Stream failed";
-      appendStreamingText(`\n\n❌ Error: ${msg}`);
+      setStreamText((prev) => prev + `\n\n❌ Error: ${msg}`);
     }
   }
 
   return (
     <div className="flex flex-col gap-3">
-      {!isStreaming && !streamingText && (
+      {/* Manual start button — only shown when not autoStart and not yet started */}
+      {!autoStart && !streaming && !streamText && (
         <button
           onClick={startStream}
           className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
@@ -93,14 +108,13 @@ export default function StreamingOutput({ sessionId, stepId, prompt, systemPromp
         </button>
       )}
 
-      {(isStreaming || streamingText) && (
+      {(streaming || streamText) && (
         <div className="relative">
-          {/* Status bar */}
           <div className="flex items-center gap-2 mb-2 text-xs text-slate-400">
-            {isStreaming ? (
+            {streaming ? (
               <>
                 <span className="pulse-dot w-2 h-2 bg-blue-400 rounded-full inline-block" />
-                <span className="text-blue-300 font-semibold">Claude is generating...</span>
+                <span className="text-blue-300 font-semibold">Claude is generating…</span>
               </>
             ) : (
               <>
@@ -110,23 +124,19 @@ export default function StreamingOutput({ sessionId, stepId, prompt, systemPromp
             )}
           </div>
 
-          {/* Output box */}
           <div
             ref={containerRef}
-            className="bg-slate-900/70 border border-slate-700 rounded-xl p-4 font-mono text-sm text-slate-200 max-h-80 overflow-y-auto whitespace-pre-wrap leading-relaxed"
+            className="bg-slate-900/70 border border-slate-700 rounded-xl p-4 font-mono text-sm text-slate-200 max-h-64 overflow-y-auto whitespace-pre-wrap leading-relaxed"
           >
-            {streamingText}
-            {isStreaming && <span className="inline-block w-2 h-4 bg-blue-400 ml-0.5 animate-pulse" />}
+            {streamText}
+            {streaming && <span className="inline-block w-2 h-4 bg-blue-400 ml-0.5 animate-pulse" />}
           </div>
 
-          {/* Regenerate button */}
-          {!isStreaming && (
-            <button
-              onClick={startStream}
-              className="mt-2 text-xs text-slate-400 hover:text-slate-200 underline transition-colors"
-            >
-              ↺ Re-run generation
-            </button>
+          {/* No re-run button here — regeneration is handled by HumanReviewPanel */}
+          {done && (
+            <p className="mt-1 text-xs text-slate-500">
+              Use <span className="text-blue-400">↺ Regenerate</span> in the review panel below to redo this.
+            </p>
           )}
         </div>
       )}

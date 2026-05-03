@@ -21,29 +21,35 @@ const VOCALS: { id: VocalType; label: string }[] = [
 ];
 
 export default function Step03MusicStyle() {
-  const { steps, sessionId, setStepTool, setStepOutput, approveStep, setCurrentStep, setStreamingText, incrementRegenerate } = usePipelineStore();
+  const { steps, sessionId, setStepTool, setStepOutput, approveStep, setCurrentStep, incrementRegenerate } = usePipelineStore();
   const step = steps.find((s) => s.id === "03-music-style")!;
   const titlesOutput = (steps.find((s) => s.id === "01-titles")?.output as TitlesOutput | null);
   const selectedTitle = titlesOutput?.selected;
+
+  const storedStyle = step.output as MusicStyleOutput | null;
 
   const [preset, setPreset] = useState<StylePreset>("bouncy-pop");
   const [tempo, setTempo] = useState<TempoPreference>("medium");
   const [energy, setEnergy] = useState<EnergyLevel>("moderate");
   const [vocal, setVocal] = useState<VocalType>("child");
   const [prompt, setPrompt] = useState("");
-  const [styleOutput, setStyleOutput] = useState<MusicStyleOutput | null>(null);
+  const [styleOutput, setStyleOutput] = useState<MusicStyleOutput | null>(storedStyle);
+  const [generating, setGenerating] = useState(false);
+  const [streamKey, setStreamKey] = useState(0);
 
   const tools = TOOLS_BY_STEP["03-music-style"];
 
   function buildPrompt() {
-    if (!selectedTitle) return;
+    if (!selectedTitle || generating) return;
     const p = buildMusicStylePrompt(selectedTitle.title, preset, tempo, energy, vocal);
     setPrompt(p);
-    setStreamingText("");
     setStyleOutput(null);
+    setGenerating(true);
+    setStreamKey((k) => k + 1);
   }
 
   function handleStreamComplete(raw: string) {
+    setGenerating(false);
     try {
       const parsed = parseMusicStyleOutput(raw);
       const output = { ...parsed, preset };
@@ -112,14 +118,14 @@ export default function Step03MusicStyle() {
         </div>
       </div>
 
-      {step.selectedTool && !prompt && (
+      {step.selectedTool && !styleOutput && !generating && (
         <button onClick={buildPrompt} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
           Generate Music Style Brief →
         </button>
       )}
 
-      {prompt && step.selectedTool?.apiSupported && (
-        <StreamingOutput sessionId={sessionId || ""} stepId="03-music-style" prompt={prompt} onComplete={handleStreamComplete} autoStart />
+      {generating && prompt && step.selectedTool?.apiSupported && (
+        <StreamingOutput key={streamKey} sessionId={sessionId || ""} stepId="03-music-style" prompt={prompt} onComplete={handleStreamComplete} autoStart />
       )}
 
       {styleOutput && (

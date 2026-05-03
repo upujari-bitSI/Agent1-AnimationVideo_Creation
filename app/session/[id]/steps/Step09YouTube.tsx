@@ -12,28 +12,33 @@ import HumanReviewPanel from "@/components/HumanReviewPanel";
 import StreamingOutput from "@/components/StreamingOutput";
 
 export default function Step09YouTube() {
-  const { steps, sessionId, setStepTool, setStepOutput, approveStep, setCurrentStep, setStreamingText, incrementRegenerate } = usePipelineStore();
+  const { steps, sessionId, setStepTool, setStepOutput, approveStep, setCurrentStep, incrementRegenerate } = usePipelineStore();
   const step = steps.find((s) => s.id === "09-youtube")!;
   const titlesOutput = steps.find((s) => s.id === "01-titles")?.output as TitlesOutput | null;
   const lyricsOutput = steps.find((s) => s.id === "02-lyrics")?.output as LyricsOutput | null;
 
   const [prompt, setPrompt] = useState("");
-  const [meta, setMeta] = useState<YouTubeMetadata | null>(null);
+  const [meta, setMeta] = useState<YouTubeMetadata | null>((step.output as YouTubeMetadata | null));
   const [selectedTitleIdx, setSelectedTitleIdx] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [streamKey, setStreamKey] = useState(0);
 
   const tools = TOOLS_BY_STEP["09-youtube"];
   const title = titlesOutput?.selected?.title || "";
   const themes = titlesOutput?.themes || [];
 
   function buildPrompt() {
+    if (generating) return;
     const lyricsSummary = lyricsOutput ? buildLyricsSummary(lyricsOutput.rawText) : "";
     const p = buildYouTubeMetaPrompt(title, lyricsSummary, themes);
     setPrompt(p);
-    setStreamingText("");
     setMeta(null);
+    setGenerating(true);
+    setStreamKey((k) => k + 1);
   }
 
   function handleStreamComplete(raw: string) {
+    setGenerating(false);
     try {
       const parsed = parseYouTubeMetaOutput(raw);
       setMeta(parsed);
@@ -45,14 +50,14 @@ export default function Step09YouTube() {
     <StepCard step={step} isActive>
       <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => setStepTool("09-youtube", t)} />
 
-      {step.selectedTool && !prompt && (
+      {step.selectedTool && !meta && !generating && (
         <button onClick={buildPrompt} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
           Generate YouTube Metadata →
         </button>
       )}
 
-      {prompt && step.selectedTool?.apiSupported && (
-        <StreamingOutput sessionId={sessionId || ""} stepId="09-youtube" prompt={prompt} onComplete={handleStreamComplete} autoStart />
+      {generating && prompt && step.selectedTool?.apiSupported && (
+        <StreamingOutput key={streamKey} sessionId={sessionId || ""} stepId="09-youtube" prompt={prompt} onComplete={handleStreamComplete} autoStart />
       )}
 
       {meta && (
