@@ -16,10 +16,11 @@ interface SessionSummary {
 
 export default function LandingPage() {
   const router = useRouter();
-  const { resetSession, setSessionId, setSessionTitle } = usePipelineStore();
+  const { resetSession, setSessionId, setSessionTitle, sessionId: lastSessionId, sessionTitle: lastSessionTitle, currentStepIndex: lastStepIdx } = usePipelineStore();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/session")
@@ -27,6 +28,37 @@ export default function LandingPage() {
       .then((d) => setSessions(d.sessions || []))
       .catch(() => {});
   }, []);
+
+  async function deleteSession(id: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm("Delete this session? This cannot be undone.")) return;
+    setDeletingId(id);
+    try {
+      await fetch("/api/session", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (lastSessionId === id) resetSession();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function deleteAllSessions() {
+    if (!confirm(`Delete ALL ${sessions.length} sessions? This cannot be undone.`)) return;
+    await Promise.all(sessions.map((s) =>
+      fetch("/api/session", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: s.id }),
+      })
+    ));
+    setSessions([]);
+    resetSession();
+  }
 
   async function startNewSession() {
     setLoading(true);
@@ -83,7 +115,7 @@ export default function LandingPage() {
             You approve every step. You own every decision.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto mb-3">
             <input
               type="text"
               placeholder="Session title (optional)..."
@@ -100,6 +132,22 @@ export default function LandingPage() {
               {loading ? "Starting…" : "🚀 Start New Video"}
             </button>
           </div>
+
+          {lastSessionId && (
+            <div className="max-w-md mx-auto mb-6 flex items-center gap-2 p-3 bg-amber-900/20 border border-amber-700/40 rounded-xl text-left">
+              <span className="text-xl">⏯</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-amber-300 font-bold">Unfinished session</p>
+                <p className="text-sm text-slate-200 truncate">{lastSessionTitle} <span className="text-xs text-slate-500">· step {lastStepIdx + 1}/9</span></p>
+              </div>
+              <button
+                onClick={() => router.push(`/session/${lastSessionId}`)}
+                className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg whitespace-nowrap"
+              >
+                Resume →
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2 justify-center text-xs">
             {["9-Step Pipeline", "Human-in-the-Loop", "Monetization Checks", "Session History", "Claude AI Powered", "Free & Paid Tools"].map((f) => (
@@ -146,26 +194,41 @@ export default function LandingPage() {
       {sessions.length > 0 && (
         <section className="px-6 py-8 border-t border-slate-800">
           <div className="max-w-3xl mx-auto">
-            <h2 className="text-lg font-bold text-white mb-4" style={{ fontFamily: "var(--font-fredoka)" }}>
-              Recent Sessions
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white" style={{ fontFamily: "var(--font-fredoka)" }}>
+                Recent Sessions
+              </h2>
+              <button
+                onClick={deleteAllSessions}
+                className="px-3 py-1.5 bg-red-900/40 hover:bg-red-900/60 text-red-300 text-xs font-semibold rounded-lg transition-all"
+                title="Delete all sessions"
+              >
+                🗑 Clear all
+              </button>
+            </div>
             <div className="space-y-2">
               {sessions.slice(0, 5).map((s) => (
-                <motion.a
+                <motion.div
                   key={s.id}
-                  href={`/session/${s.id}`}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl border border-slate-700/40 hover:border-slate-600 transition-all"
+                  className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-xl border border-slate-700/40 hover:border-slate-600 transition-all"
                 >
-                  <div>
-                    <div className="font-semibold text-slate-200">{s.title || "Untitled"}</div>
+                  <a href={`/session/${s.id}`} className="flex-1 min-w-0">
+                    <div className="font-semibold text-slate-200 truncate">{s.title || "Untitled"}</div>
                     <div className="text-xs text-slate-500 mt-0.5">{new Date(s.updated_at).toLocaleDateString()}</div>
-                  </div>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusColor[s.status] || "text-slate-400 bg-slate-700/30"}`}>
+                  </a>
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-full flex-shrink-0 ${statusColor[s.status] || "text-slate-400 bg-slate-700/30"}`}>
                     {s.status.replace("_", " ")}
                   </span>
-                </motion.a>
+                  <button
+                    onClick={(e) => deleteSession(s.id, e)}
+                    disabled={deletingId === s.id}
+                    className="px-2.5 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-300 text-xs font-semibold rounded-lg transition-all flex-shrink-0"
+                  >
+                    {deletingId === s.id ? "…" : "🗑"}
+                  </button>
+                </motion.div>
               ))}
             </div>
             <a href="/history" className="block text-center text-sm text-blue-400 hover:text-blue-300 mt-3 transition-colors">

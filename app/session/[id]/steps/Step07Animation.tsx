@@ -14,13 +14,33 @@ export default function Step07Animation() {
   const step = steps.find((s) => s.id === "07-animation")!;
   const scenesOutput = steps.find((s) => s.id === "06-scenes")?.output as ScenesOutput | null;
 
-  const [clips, setClips] = useState<AnimatedClip[]>([]);
-  const [continuousFlow, setContinuousFlow] = useState(true);
+  const stored = step.output as { clips?: AnimatedClip[]; continuousFlow?: boolean } | null;
+  const [clips, setClips] = useState<AnimatedClip[]>(stored?.clips ?? []);
+  const [continuousFlow, setContinuousFlow] = useState(stored?.continuousFlow ?? true);
   const [generating, setGenerating] = useState(false);
+  const [generatingIdx, setGeneratingIdx] = useState(-1);
+  const [manualPrompts, setManualPrompts] = useState<Record<number, string>>({});
 
   const tools = TOOLS_BY_STEP["07-animation"];
+  const isManual = step.selectedTool?.requiresManual ?? false;
   const approvedClips = clips.filter((c) => c.approved);
   const totalDuration = approvedClips.reduce((s, c) => s + c.duration, 0);
+
+  function handleClipUpload(idx: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setClips((prev) => prev.map((c, i) => i === idx ? { ...c, videoUrl: url } : c));
+  }
+
+  function copyManualPrompt(idx: number) {
+    const clip = clips[idx];
+    if (!clip) return;
+    const prompt = buildAnimationPrompt(clip.imageUrl, clip.motionIntensity);
+    navigator.clipboard.writeText(prompt);
+    setManualPrompts((prev) => ({ ...prev, [idx]: prompt }));
+    setTimeout(() => setManualPrompts((prev) => { const n = { ...prev }; delete n[idx]; return n; }), 2000);
+  }
 
   function initClips() {
     if (!scenesOutput?.scenes) return;
@@ -45,10 +65,13 @@ export default function Step07Animation() {
     const prompt = buildAnimationPrompt(clip.imageUrl, clip.motionIntensity);
 
     if (step.selectedTool.requiresManual) {
+      // Manual tool — show prompt and wait for upload
       setClips((prev) => prev.map((c, i) => i === idx ? { ...c, videoUrl: "manual-pending" } : c));
+      copyManualPrompt(idx);
       return;
     }
 
+    setGeneratingIdx(idx);
     try {
       const res = await fetch("/api/tools", {
         method: "POST",
@@ -57,7 +80,9 @@ export default function Step07Animation() {
       });
       const data = await res.json();
       setClips((prev) => prev.map((c, i) => i === idx ? { ...c, videoUrl: data.videoUrl || "" } : c));
-    } catch {}
+    } catch {} finally {
+      setGeneratingIdx(-1);
+    }
   }
 
   async function animateAll() {
@@ -107,36 +132,101 @@ export default function Step07Animation() {
             </button>
           </div>
 
-          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-            {clips.map((clip, i) => (
-              <div key={clip.id} className={`flex gap-3 p-3 rounded-xl border transition-all
-                ${clip.approved ? "border-green-700/40 bg-green-900/10" : "border-slate-700/50 bg-slate-800/40"}`}>
-                <div className="w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden bg-slate-700">
-                  {clip.imageUrl ? <img src={clip.imageUrl} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-500">🖼</div>}
-                </div>
-                <div className="flex-1 min-w-0 space-y-1">
-                  <p className="text-xs text-slate-400">Clip {i+1} · {clip.duration}s</p>
-                  <div className="flex gap-1">
-                    {(["subtle","moderate","dynamic"] as MotionIntensity[]).map((m) => (
-                      <button key={m} onClick={() => setClips((prev) => prev.map((c, j) => j === i ? { ...c, motionIntensity: m } : c))}
-                        className={`px-2 py-0.5 text-xs rounded border transition-all
-                          ${clip.motionIntensity === m ? "bg-purple-700 border-purple-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}>
-                        {m}
+          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+            {clips.map((clip, i) => {
+              const isClipGen = generatingIdx === i || (generating && !clip.videoUrl);
+              const hasVideo = clip.videoUrl && clip.videoUrl !== "manual-pending";
+              const needsManualUpload = clip.videoUrl === "manual-pending" || (isManual && !hasVideo);
+              return (
+                <div key={clip.id} className={`p-3 rounded-xl border transition-all
+                  ${clip.approved ? "border-green-700/40 bg-green-900/10" : "border-slate-700/50 bg-slate-800/40"}`}>
+                  <div className="flex gap-3">
+                    {/* Image / video preview */}
+                    <div className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-slate-700 relative">
+                      {hasVideo ? (
+                        <video src={clip.videoUrl} controls className="w-full h-full object-cover" />
+                      ) : clip.imageUrl ? (
+                        <img src={clip.imageUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-500 text-2xl">🖼</div>
+                      )}
+                      {isClipGen && (
+                        <div className="absolute inset-0 bg-blue-900/60 flex items-center justify-center">
+                          <span className="pulse-dot text-2xl">⚡</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Info & motion intensity */}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs text-slate-400 font-semibold">Clip {i+1} · {clip.duration}s</p>
+                      <div className="flex gap-1">
+                        {(["subtle","moderate","dynamic"] as MotionIntensity[]).map((m) => (
+                          <button key={m} onClick={() => setClips((prev) => prev.map((c, j) => j === i ? { ...c, motionIntensity: m } : c))}
+                            className={`px-2 py-0.5 text-xs rounded border transition-all
+                              ${clip.motionIntensity === m ? "bg-purple-700 border-purple-500 text-white" : "bg-slate-800 border-slate-700 text-slate-400"}`}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                      {isClipGen && (
+                        <div className="space-y-1 pt-1">
+                          <p className="text-xs text-blue-300 font-semibold">Generating animation… (this can take 1–3 min)</p>
+                          <div className="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                            <div className="bg-blue-500 h-full rounded-full animate-pulse" style={{ width: "60%" }} />
+                          </div>
+                        </div>
+                      )}
+                      {hasVideo && <p className="text-xs text-green-400">&#x2713; Video ready</p>}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-1 flex-shrink-0">
+                      <button onClick={() => animateClip(i)} disabled={isClipGen}
+                        className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 disabled:opacity-60 text-white rounded-lg">
+                        {isClipGen ? "…" : "Anim"}
                       </button>
-                    ))}
+                      <button onClick={() => {
+                        const updated = clips.map((c, j) => j === i ? { ...c, approved: !c.approved } : c);
+                        setClips(updated);
+                        setStepOutput("07-animation", { clips: updated, totalDuration: updated.filter((x) => x.approved).reduce((s, c) => s + c.duration, 0), continuousFlow });
+                      }}
+                        className={`px-2 py-1 text-xs rounded-lg transition-all ${clip.approved ? "bg-green-700 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}>
+                        {clip.approved ? "✓" : "OK"}
+                      </button>
+                    </div>
                   </div>
-                  {clip.videoUrl === "manual-pending" && <p className="text-xs text-amber-300">Upload needed</p>}
-                  {clip.videoUrl && clip.videoUrl !== "manual-pending" && <p className="text-xs text-green-400">✓ Video ready</p>}
+
+                  {/* Manual upload section (always shown for manual tools, or when generation is "pending") */}
+                  {(needsManualUpload || !hasVideo) && (
+                    <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-2">
+                      {isManual && (
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-amber-300">
+                            {clip.videoUrl === "manual-pending" ? `Generate this clip in ${step.selectedTool!.name} (prompt copied)` : `Use ${step.selectedTool!.name} to animate, then upload below`}
+                          </p>
+                          <button
+                            onClick={() => copyManualPrompt(i)}
+                            className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg flex-shrink-0"
+                          >
+                            {manualPrompts[i] ? "&#x2713; Copied" : "Copy prompt"}
+                          </button>
+                        </div>
+                      )}
+                      <label className="block">
+                        <span className="text-xs text-slate-400 font-semibold">Upload local video for this clip:</span>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          onChange={(e) => handleClipUpload(i, e)}
+                          className="block w-full mt-1 text-xs text-slate-400 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-700 file:text-white file:text-xs file:font-bold file:cursor-pointer hover:file:bg-blue-600"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
-                  <button onClick={() => animateClip(i)} className="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded-lg">Anim</button>
-                  <button onClick={() => { setClips((prev) => prev.map((c, j) => j === i ? { ...c, approved: !c.approved } : c)); }}
-                    className={`px-2 py-1 text-xs rounded-lg transition-all ${clip.approved ? "bg-green-700 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}>
-                    {clip.approved ? "✓" : "OK"}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

@@ -64,6 +64,17 @@ export const TOOLS_BY_STEP: Record<string, ToolOption[]> = {
       apiSupported: true,
       credentialKey: "ANTHROPIC_API_KEY",
     },
+    {
+      id: "chatgpt-free",
+      name: "ChatGPT 3.5 (web)",
+      tier: "free",
+      costPerUse: "$0",
+      commercialOk: true,
+      quality: 2,
+      speed: "medium",
+      requiresManual: true,
+      apiSupported: false,
+    },
   ],
   "04-music-gen": [
     {

@@ -74,13 +74,21 @@ function LockBanner({ reason, onNavigate }: { reason: string; onNavigate?: () =>
 export default function SessionPage() {
   const params = useParams();
   const id = params.id as string;
-  const { sessionId, setSessionId, sessionTitle, setSettingsOpen, steps, currentStepIndex } = usePipelineStore();
+  const { sessionId, setSessionId, sessionTitle, setSettingsOpen, steps, currentStepIndex, resetSession } = usePipelineStore();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!sessionId && id) setSessionId(id);
+    if (!id) return;
+    // If persisted session id differs from URL → fresh session for this id.
+    // If it matches → state is already hydrated from localStorage (resume).
+    if (sessionId && sessionId !== id) {
+      resetSession();
+      setSessionId(id);
+    } else if (!sessionId) {
+      setSessionId(id);
+    }
     setReady(true);
-  }, [id, sessionId, setSessionId]);
+  }, [id, sessionId, setSessionId, resetSession]);
 
   if (!ready) {
     return (

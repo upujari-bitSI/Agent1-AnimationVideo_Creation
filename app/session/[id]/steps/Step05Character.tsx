@@ -144,17 +144,42 @@ export default function Step05Character() {
             <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span>
             <span className="text-sm font-semibold text-blue-300">Paste the image URLs back (or leave blank to use placeholder)</span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {manualUrls.map((url, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 w-16 flex-shrink-0">Option {i + 1}:</span>
-                <input
-                  type="text"
-                  value={url}
-                  onChange={(e) => setManualUrls((prev) => prev.map((u, j) => j === i ? e.target.value : u))}
-                  placeholder="https://... (optional)"
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
-                />
+              <div key={i} className="flex items-start gap-2 p-2 bg-slate-900/40 rounded-lg border border-slate-700/40">
+                {/* Preview thumbnail */}
+                <div className="w-14 h-14 rounded-lg overflow-hidden bg-slate-700 flex-shrink-0 flex items-center justify-center">
+                  {url ? (
+                    <img src={url} alt={`Preview ${i+1}`} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <span className="text-2xl">🧒</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 w-16 flex-shrink-0 font-semibold">Option {i + 1}:</span>
+                    <input
+                      type="text"
+                      value={url.startsWith("blob:") ? "(uploaded file)" : url}
+                      onChange={(e) => setManualUrls((prev) => prev.map((u, j) => j === i ? e.target.value : u))}
+                      placeholder="Paste image URL or upload below"
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <label className="block">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const blobUrl = URL.createObjectURL(file);
+                        setManualUrls((prev) => prev.map((u, j) => j === i ? blobUrl : u));
+                      }}
+                      className="block w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:text-xs file:cursor-pointer hover:file:bg-slate-600"
+                    />
+                  </label>
+                </div>
               </div>
             ))}
           </div>

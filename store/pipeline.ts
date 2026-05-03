@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { StepCost } from "@/lib/cost-tracker";
 
 export type StepStatus = "idle" | "running" | "review" | "approved" | "error";
@@ -90,7 +91,7 @@ const INITIAL_STEPS: PipelineStep[] = [
   { id: "09-youtube",     name: "YouTube Metadata",    description: "Generate SEO-optimized titles, description, tags, and thumbnail",    estimatedTime: "~30 sec", status: "idle", selectedTool: null, output: null, userEdits: null, regenerateCount: 0, timeElapsed: 0, cost: 0, notes: "" },
 ];
 
-export const usePipelineStore = create<PipelineState>((set, get) => ({
+export const usePipelineStore = create<PipelineState>()(persist((set, get) => ({
   sessionId: null,
   sessionTitle: "New Nursery Rhyme",
   currentStepIndex: 0,
@@ -184,4 +185,17 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       isStreaming: false,
       monetization: { music: false, images: false, animation: false, overall: false, warnings: [] },
     }),
+}), {
+  name: "rhymeforge-pipeline",
+  storage: createJSONStorage(() => localStorage),
+  partialize: (state) => ({
+    sessionId: state.sessionId,
+    sessionTitle: state.sessionTitle,
+    currentStepIndex: state.currentStepIndex,
+    steps: state.steps,
+    costs: state.costs,
+    totalCost: state.totalCost,
+    videosPerMonth: state.videosPerMonth,
+    monetization: state.monetization,
+  }),
 }));

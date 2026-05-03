@@ -16,12 +16,25 @@ export default function Step04MusicGen() {
   const lyricsOutput = steps.find((s) => s.id === "02-lyrics")?.output as LyricsOutput | null;
   const styleOutput = steps.find((s) => s.id === "03-music-style")?.output as MusicStyleOutput | null;
 
-  const [tracks, setTracks] = useState<MusicTrack[]>([]);
-  const [selected, setSelected] = useState<MusicTrack | null>(null);
+  const stored = step.output as { tracks?: MusicTrack[]; selected?: MusicTrack } | null;
+  const [tracks, setTracks] = useState<MusicTrack[]>(stored?.tracks ?? []);
+  const [selected, setSelected] = useState<MusicTrack | null>(stored?.selected ?? null);
   const [manualInstructions, setManualInstructions] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [uploadedName, setUploadedName] = useState<string>("");
 
   const tools = TOOLS_BY_STEP["04-music-gen"];
+
+  function handleLocalUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const t: MusicTrack = { id: `local-${Date.now()}`, url, title: file.name.replace(/\.[^.]+$/, "") };
+    setTracks((prev) => [...prev.filter((x) => !x.id.startsWith("local-")), t]);
+    setSelected(t);
+    setUploadedName(file.name);
+    setStepOutput("04-music-gen", { tracks: [t], selected: t });
+  }
 
   async function handleGenerate() {
     if (!step.selectedTool) return;
@@ -80,6 +93,27 @@ export default function Step04MusicGen() {
           {generating ? "Generating Music…" : "Generate Music →"}
         </button>
       )}
+
+      {/* Local file upload — always available regardless of selected tool */}
+      <div className="p-4 bg-slate-800/40 border border-dashed border-slate-600 rounded-xl space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">📁</span>
+          <p className="text-sm font-semibold text-slate-300">Or upload a local audio file</p>
+          <span className="ml-auto text-xs text-slate-500">.mp3 .wav .m4a</span>
+        </div>
+        <label className="block">
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={handleLocalUpload}
+            className="block w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-700 file:text-white file:font-bold file:cursor-pointer hover:file:bg-blue-600"
+          />
+        </label>
+        {uploadedName && <p className="text-xs text-green-400">&#x2713; Uploaded: {uploadedName}</p>}
+        {selected && selected.id.startsWith("local-") && (
+          <audio controls src={selected.url} className="w-full mt-2 h-10" />
+        )}
+      </div>
 
       {/* Manual instructions */}
       {manualInstructions && (
