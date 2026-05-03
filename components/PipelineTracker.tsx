@@ -27,7 +27,7 @@ export default function PipelineTracker() {
           return (
             <button
               key={step.id}
-              onClick={() => step.status !== "idle" && setCurrentStep(i)}
+              onClick={() => setCurrentStep(i)}
               title={step.name}
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs transition-all
                 ${cfg.bg} ${isCurrent ? "ring-2 ring-blue-400" : ""}`}
@@ -55,7 +55,7 @@ export default function PipelineTracker() {
         {steps.map((step, i) => {
           const cfg = STATUS_CONFIG[step.status];
           const isCurrent = i === currentStepIndex;
-          const isClickable = step.status === "approved" || step.status === "review" || isCurrent;
+          const isClickable = true;
 
           return (
             <div key={step.id} className="relative flex gap-3">

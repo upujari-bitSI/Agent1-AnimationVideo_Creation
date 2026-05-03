@@ -35,15 +35,19 @@ export default function Step05Character() {
   const [selected, setSelected] = useState<CharacterOption | null>(null);
   const [generating, setGenerating] = useState(false);
   const [prompts, setPrompts] = useState<string[]>([]);
+  const [manualUrls, setManualUrls] = useState<string[]>(["", "", "", ""]);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const tools = TOOLS_BY_STEP["05-character"];
+  const isManual = step.selectedTool?.requiresManual ?? false;
 
   async function generateCharacters() {
     setGenerating(true);
     const imagePrompts = buildCharacterImagePrompts(design);
     setPrompts(imagePrompts);
 
-    if (!step.selectedTool?.apiSupported) {
+    if (isManual) {
+      // For manual tools: build placeholder options with empty imageUrl
       const opts: CharacterOption[] = imagePrompts.map((p, i) => ({
         id: `char-${i}`,
         imageUrl: "",
@@ -51,11 +55,16 @@ export default function Step05Character() {
         description: `Character option ${i + 1}`,
       }));
       setOptions(opts);
+      setManualUrls(["", "", "", ""]);
       setGenerating(false);
       return;
     }
 
-    // Call image generation API
+    if (!step.selectedTool?.apiSupported) {
+      setGenerating(false);
+      return;
+    }
+
     try {
       const generated: CharacterOption[] = [];
       for (let i = 0; i < imagePrompts.length; i++) {
@@ -74,9 +83,24 @@ export default function Step05Character() {
     }
   }
 
+  function copyPrompt(idx: number) {
+    navigator.clipboard.writeText(prompts[idx]).then(() => {
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx(null), 2000);
+    });
+  }
+
+  function applyManualUrls() {
+    const updated = options.map((opt, i) => ({
+      ...opt,
+      imageUrl: manualUrls[i] || opt.imageUrl,
+    }));
+    setOptions(updated);
+  }
+
   return (
     <StepCard step={step} isActive>
-      <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => setStepTool("05-character", t)} />
+      <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => { setStepTool("05-character", t); setOptions([]); setSelected(null); setPrompts([]); }} />
 
       {/* Design controls */}
       <div className="grid grid-cols-2 gap-4">
@@ -88,12 +112,63 @@ export default function Step05Character() {
 
       {step.selectedTool && options.length === 0 && (
         <button onClick={generateCharacters} disabled={generating} className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-xl transition-all">
-          {generating ? "Generating Characters…" : "Generate 4 Character Options →"}
+          {generating ? "Generating Characters…" : (isManual ? "Show Prompts for Manual Tool →" : "Generate 4 Character Options →")}
         </button>
       )}
 
+      {/* Manual tool: show prompts + URL paste inputs */}
+      {isManual && prompts.length > 0 && (
+        <div className="space-y-3 p-4 bg-slate-800/50 border border-amber-700/40 rounded-xl">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 bg-amber-600 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span>
+            <span className="text-sm font-semibold text-amber-300">Copy each prompt into <strong>{step.selectedTool!.name}</strong>, generate 4 images</span>
+          </div>
+          <div className="space-y-2">
+            {prompts.map((p, i) => (
+              <div key={i} className="relative">
+                <pre className="text-xs bg-slate-900 border border-slate-700 p-2.5 rounded-lg text-slate-300 whitespace-pre-wrap overflow-auto max-h-20 pr-16">
+                  {p}
+                </pre>
+                <button
+                  onClick={() => copyPrompt(i)}
+                  className={`absolute top-2 right-2 px-2 py-1 text-xs font-bold rounded transition-all
+                    ${copiedIdx === i ? "bg-green-600 text-white" : "bg-slate-700 hover:bg-slate-600 text-slate-300"}`}
+                >
+                  {copiedIdx === i ? "✓" : "Copy"}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span>
+            <span className="text-sm font-semibold text-blue-300">Paste the image URLs back (or leave blank to use placeholder)</span>
+          </div>
+          <div className="space-y-2">
+            {manualUrls.map((url, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 w-16 flex-shrink-0">Option {i + 1}:</span>
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => setManualUrls((prev) => prev.map((u, j) => j === i ? e.target.value : u))}
+                  placeholder="https://... (optional)"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={applyManualUrls}
+            className="w-full py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl text-sm transition-all"
+          >
+            Confirm Options →
+          </button>
+        </div>
+      )}
+
       {/* Character options grid */}
-      {options.length > 0 && (
+      {options.length > 0 && (!isManual || prompts.length === 0 || options[0].imageUrl !== "") && (
         <div className="grid grid-cols-2 gap-3">
           {options.map((opt, i) => (
             <button key={opt.id} onClick={() => { setSelected(opt); setStepOutput("05-character", { design, options, selected: opt, locked: false }); }}
@@ -107,16 +182,6 @@ export default function Step05Character() {
               <p className="text-xs text-slate-400 font-semibold">Option {i + 1}</p>
               {selected?.id === opt.id && <p className="text-xs text-blue-300 font-bold mt-1">✓ Selected</p>}
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Show prompt for manual tools */}
-      {step.selectedTool?.requiresManual && prompts.length > 0 && (
-        <div className="p-4 bg-slate-800/60 border border-slate-600 rounded-xl space-y-2">
-          <p className="text-xs text-amber-300 font-bold">Use these prompts in {step.selectedTool.name}:</p>
-          {prompts.map((p, i) => (
-            <pre key={i} className="text-xs text-slate-300 bg-slate-900 p-2 rounded overflow-auto">Option {i+1}: {p.slice(0, 120)}…</pre>
           ))}
         </div>
       )}

@@ -76,32 +76,26 @@ export default function Step02Lyrics() {
     setGenerating(false);
   }
 
-  // Title not yet selected in Step 1
-  if (!selectedTitle) {
-    return (
-      <StepCard step={step} isActive>
-        <div className="p-5 bg-amber-900/20 border border-amber-700/40 rounded-xl text-center space-y-3">
-          <p className="text-amber-300 font-bold">Step 1 not complete</p>
-          <p className="text-slate-400 text-sm">Go back to Step 1, pick a title, and click <strong>Approve &amp; Continue</strong>.</p>
-          <button
-            onClick={() => setCurrentStep(0)}
-            className="px-5 py-2 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition-all"
-          >
-            ← Back to Step 1
-          </button>
-        </div>
-      </StepCard>
-    );
-  }
-
   return (
     <StepCard step={step} isActive>
-      {/* Title banner */}
-      <div className="flex items-center gap-2 p-3 bg-slate-800/60 rounded-xl border border-slate-700">
-        <span className="text-2xl">{selectedTitle.emoji}</span>
-        <span className="font-bold text-white" style={{ fontFamily: "var(--font-fredoka)" }}>{selectedTitle.title}</span>
-        <span className="ml-auto text-xs text-green-400 font-semibold">&#x2713; Title locked</span>
-      </div>
+      {/* Title banner — or locked notice when step 1 not done */}
+      {selectedTitle ? (
+        <div className="flex items-center gap-2 p-3 bg-slate-800/60 rounded-xl border border-slate-700">
+          <span className="text-2xl">{selectedTitle.emoji}</span>
+          <span className="font-bold text-white" style={{ fontFamily: "var(--font-fredoka)" }}>{selectedTitle.title}</span>
+          <span className="ml-auto text-xs text-green-400 font-semibold">&#x2713; Title locked</span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between p-3 bg-slate-800/40 border border-slate-700/50 rounded-xl">
+          <span className="text-sm text-slate-400">No title selected yet</span>
+          <button
+            onClick={() => setCurrentStep(0)}
+            className="px-3 py-1 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded-lg text-xs transition-all"
+          >
+            ← Go to Step 1
+          </button>
+        </div>
+      )}
 
       <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => { setStepTool("02-lyrics", t); setPrompt(""); setLyrics(null); }} />
 
@@ -126,7 +120,11 @@ export default function Step02Lyrics() {
 
       {/* Generate / show prompt button */}
       {step.selectedTool && !lyrics && !generating && !prompt && !isApproved && (
-        <button onClick={startGeneration} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
+        <button
+          onClick={startGeneration}
+          disabled={!selectedTitle}
+          className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all"
+        >
           {isManual ? "Show ChatGPT Prompt →" : "Generate Lyrics →"}
         </button>
       )}

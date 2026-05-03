@@ -111,8 +111,15 @@ export default function Step06Scenes() {
       <ToolSelector tools={tools} selected={step.selectedTool} onSelect={(t) => setStepTool("06-scenes", t)} />
 
       {!lyricsOutput && (
-        <div className="p-4 bg-amber-900/20 border border-amber-700/40 rounded-xl text-amber-300 text-sm">
-          ← Complete Step 2 (Lyrics) first
+        <div className="p-4 bg-amber-900/20 border border-amber-700/40 rounded-xl text-sm space-y-1">
+          <p className="text-amber-300 font-semibold">Lyrics not available yet</p>
+          <p className="text-slate-400">Complete and approve Step 2 (Lyrics) to load lyric lines here.</p>
+        </div>
+      )}
+
+      {lyricsOutput && !characterOutput && (
+        <div className="p-3 bg-slate-800/50 border border-slate-700 rounded-xl text-sm text-slate-400">
+          Tip: Complete Step 5 (Character Design) first for consistent character images across all scenes.
         </div>
       )}
 

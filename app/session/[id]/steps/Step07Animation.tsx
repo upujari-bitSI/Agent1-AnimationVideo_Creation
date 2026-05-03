@@ -84,6 +84,13 @@ export default function Step07Animation() {
         </label>
       )}
 
+      {!scenesOutput && (
+        <div className="p-4 bg-amber-900/20 border border-amber-700/40 rounded-xl text-sm space-y-1">
+          <p className="text-amber-300 font-semibold">No approved scenes yet</p>
+          <p className="text-slate-400">Complete and approve Step 6 (Scene Images) first, then load them here to animate.</p>
+        </div>
+      )}
+
       {scenesOutput && clips.length === 0 && step.selectedTool && (
         <button onClick={initClips} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
           Load Approved Scenes →
