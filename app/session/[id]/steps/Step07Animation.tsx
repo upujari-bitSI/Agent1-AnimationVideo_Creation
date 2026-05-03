@@ -44,18 +44,19 @@ export default function Step07Animation() {
 
   function initClips() {
     if (!scenesOutput?.scenes) return;
-    const initial: AnimatedClip[] = scenesOutput.scenes
-      .filter((s) => s.approved && s.imageUrl)
-      .map((s, i) => ({
-        id: `clip-${i}`,
-        sceneId: s.id,
-        imageUrl: s.imageUrl || "",
-        duration: 4,
-        motionIntensity: "moderate" as MotionIntensity,
-        approved: false,
-        trimIn: 0,
-        trimOut: 4,
-      }));
+    // Include all approved scenes — imageUrl is optional (user can upload video later)
+    const approvedScenes = scenesOutput.scenes.filter((s) => s.approved);
+    if (approvedScenes.length === 0) return;
+    const initial: AnimatedClip[] = approvedScenes.map((s, i) => ({
+      id: `clip-${i}`,
+      sceneId: s.id,
+      imageUrl: s.imageUrl || "",
+      duration: 4,
+      motionIntensity: "moderate" as MotionIntensity,
+      approved: false,
+      trimIn: 0,
+      trimOut: 4,
+    }));
     setClips(initial);
   }
 
@@ -116,11 +117,19 @@ export default function Step07Animation() {
         </div>
       )}
 
-      {scenesOutput && clips.length === 0 && step.selectedTool && (
-        <button onClick={initClips} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
-          Load Approved Scenes →
-        </button>
-      )}
+      {scenesOutput && clips.length === 0 && (() => {
+        const approvedCount = scenesOutput.scenes?.filter((s) => s.approved).length ?? 0;
+        return approvedCount > 0 ? (
+          <button onClick={initClips} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">
+            Load {approvedCount} Approved Scene{approvedCount !== 1 ? "s" : ""} →
+          </button>
+        ) : (
+          <div className="p-4 bg-amber-900/20 border border-amber-700/40 rounded-xl text-sm space-y-1">
+            <p className="text-amber-300 font-semibold">No approved scenes found</p>
+            <p className="text-slate-400">Go to Step 6, click OK on the scenes you want to animate, then come back here.</p>
+          </div>
+        );
+      })()}
 
       {clips.length > 0 && (
         <>
