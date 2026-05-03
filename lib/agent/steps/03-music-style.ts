@@ -1,3 +1,5 @@
+import { parseJsonObject } from "../json-parser";
+
 export type StylePreset = "bouncy-pop" | "lullaby" | "march" | "reggae" | "jazz" | "rock-lite" | "classical";
 export type TempoPreference = "slow" | "medium" | "fast";
 export type EnergyLevel = "calm" | "moderate" | "energetic";
@@ -54,8 +56,5 @@ CRITICAL: Do not reference any real artist, band, or existing song. Return only 
 }
 
 export function parseMusicStyleOutput(raw: string): MusicStyleOutput {
-  const clean = raw.trim().replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
-  const match = clean.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Could not parse music style JSON");
-  return JSON.parse(match[0]) as MusicStyleOutput;
+  return parseJsonObject<MusicStyleOutput>(raw);
 }

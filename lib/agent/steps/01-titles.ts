@@ -1,3 +1,5 @@
+import { parseJsonArray } from "../json-parser";
+
 export interface TitleOption {
   title: string;
   emoji: string;
@@ -16,30 +18,16 @@ export function buildTitlesPrompt(themes: string[]): string {
   return `You are a kids content strategist. Generate exactly 8 original nursery rhyme title ideas.
 Themes selected by user: ${themes.join(", ")}
 
-For each title return a JSON object:
-{
-  "title": string,
-  "emoji": string,
-  "ageRange": string,
-  "hook": string,
-  "engagementScore": number
-}
+Return a JSON array of exactly 8 objects. Each object must have these keys:
+- "title": the song title (string)
+- "emoji": a single emoji (string)
+- "ageRange": e.g. "2-5 years" (string)
+- "hook": one sentence explaining why kids will love it (string, no newlines)
+- "engagementScore": number from 1-10
 
-Return a JSON array of exactly 8 objects. No markdown, no preamble, no trailing text — only the JSON array.`;
+Rules: No markdown, no preamble, no trailing text. Output ONLY the raw JSON array.`;
 }
 
 export function parseTitlesOutput(raw: string): TitleOption[] {
-  try {
-    const clean = raw.trim().replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
-    const arr = JSON.parse(clean);
-    if (!Array.isArray(arr)) throw new Error("Not an array");
-    return arr.slice(0, 8) as TitleOption[];
-  } catch {
-    // Try to find a JSON array in the text
-    const match = raw.match(/\[[\s\S]*\]/);
-    if (match) {
-      return JSON.parse(match[0]) as TitleOption[];
-    }
-    throw new Error("Could not parse titles JSON");
-  }
+  return parseJsonArray<TitleOption>(raw).slice(0, 8);
 }

@@ -1,3 +1,5 @@
+import { parseJsonObject } from "../json-parser";
+
 export interface YouTubeMetadata {
   titleOptions: string[];
   selectedTitle: string;
@@ -31,14 +33,8 @@ Return only the JSON object. No markdown, no preamble.`;
 }
 
 export function parseYouTubeMetaOutput(raw: string): YouTubeMetadata {
-  const clean = raw.trim().replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
-  const match = clean.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Could not parse YouTube metadata JSON");
-  const parsed = JSON.parse(match[0]);
-  return {
-    ...parsed,
-    selectedTitle: parsed.titleOptions?.[0] || "",
-  } as YouTubeMetadata;
+  const parsed = parseJsonObject<YouTubeMetadata>(raw);
+  return { ...parsed, selectedTitle: parsed.titleOptions?.[0] || "" };
 }
 
 export function buildLyricsSummary(rawLyrics: string): string {
